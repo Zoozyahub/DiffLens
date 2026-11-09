@@ -13,7 +13,7 @@ export async function parseFileToTables(file) {
 
 async function parseSpreadsheet(file) {
   const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: 'array' });
+  const workbook = XLSX.read(data, { type: 'array', codepage: 1251 });
 
   const tables = workbook.SheetNames.map(sheetName => {
     const sheet = workbook.Sheets[sheetName];
