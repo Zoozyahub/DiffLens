@@ -134,10 +134,19 @@
             background: var(--border);
         }
 
-        .panel.side-a::before { background: var(--success); box-shadow: 0 0 10px var(--success); }
-        .panel.side-b::before { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+        /* Нейтральные полоски: A = базовая версия (primary), B = новая версия (secondary) */
+        .panel.side-a::before { background: var(--primary); box-shadow: 0 0 10px var(--primary); }
+        .panel.side-b::before { background: var(--secondary); box-shadow: 0 0 10px var(--secondary); }
 
         h2 { margin-top: 0; color: var(--text-main); font-size: 1.5rem; letter-spacing: 1px; }
+        
+        h2 .subtitle {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-weight: 400;
+            letter-spacing: 1px;
+            margin-left: 8px;
+        }
         
         /* FORM CONTROLS */
         label { display: block; margin-bottom: 0.5rem; color: var(--text-muted); font-size: 0.9rem; }
@@ -221,7 +230,7 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             overflow: hidden;
-            display: none; /* Hidden by default */
+            display: none;
         }
 
         .stats-bar {
@@ -232,6 +241,7 @@
             border-bottom: 1px solid var(--border);
             font-family: var(--font-code);
             font-size: 0.9rem;
+            flex-wrap: wrap;
         }
 
         .stat-item span { font-weight: bold; }
@@ -268,13 +278,16 @@
             border-bottom: 1px solid rgba(255,255,255,0.05);
         }
 
-        /* DIFF HIGHLIGHTING */
-        tr.diff-a { background: rgba(0, 255, 157, 0.1); }
-        tr.diff-a td:first-child { border-left: 4px solid var(--success); }
+        /* DIFF HIGHLIGHTING — логика git-diff: красный = удалено, зелёный = добавлено */
+        /* ONLY IN A (удалено из старого) — красный */
+        tr.diff-a { background: rgba(255, 0, 85, 0.1); }
+        tr.diff-a td:first-child { border-left: 4px solid var(--danger); }
         
-        tr.diff-b { background: rgba(255, 0, 85, 0.1); }
-        tr.diff-b td:first-child { border-left: 4px solid var(--danger); }
+        /* ONLY IN B (добавлено в новом) — зелёный */
+        tr.diff-b { background: rgba(0, 255, 157, 0.1); }
+        tr.diff-b td:first-child { border-left: 4px solid var(--success); }
         
+        /* CHANGED (изменено) — жёлтый */
         tr.diff-changed { background: rgba(255, 206, 0, 0.1); }
         tr.diff-changed td:first-child { border-left: 4px solid var(--warning); }
         
@@ -317,7 +330,25 @@
             border-radius: 4px;
             margin-bottom: 2rem;
             font-size: 0.9rem;
+            line-height: 1.6;
         }
+        
+        .legend {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+            font-size: 0.85rem;
+        }
+        .legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .legend .swatch {
+            display: inline-block;
+            width: 12px; height: 12px;
+            border-radius: 2px;
+        }
+        .swatch-red    { background: var(--danger); }
+        .swatch-green  { background: var(--success); }
+        .swatch-yellow { background: var(--warning); }
 
         @media (max-width: 768px) {
             .grid-container { grid-template-columns: 1fr; }
@@ -341,11 +372,16 @@
     <main>
         <div class="info-box">
             <strong>System Ready:</strong> Supports .csv, .xlsx, .xls, and .docx (Tables Only).
+            <div class="legend">
+                <span><span class="swatch swatch-red"></span> Removed (only in A)</span>
+                <span><span class="swatch swatch-green"></span> Added (only in B)</span>
+                <span><span class="swatch swatch-yellow"></span> Changed</span>
+            </div>
         </div>
 
         <div class="grid-container">
             <div class="panel side-a">
-                <h2>DATASET A</h2>
+                <h2>DATASET A <span class="subtitle">BASELINE / OLD</span></h2>
                 <div class="file-input-wrapper">
                     <input type="file" id="fileA" accept=".csv, .xlsx, .xls, .docx">
                 </div>
@@ -360,7 +396,7 @@
             </div>
 
             <div class="panel side-b">
-                <h2>DATASET B</h2>
+                <h2>DATASET B <span class="subtitle">COMPARE / NEW</span></h2>
                 <div class="file-input-wrapper">
                     <input type="file" id="fileB" accept=".csv, .xlsx, .xls, .docx">
                 </div>
@@ -384,8 +420,8 @@
 
         <div class="results-container" id="results">
             <div class="stats-bar">
-                <div class="stat-item text-green">Only in A: <span id="countA">0</span></div>
-                <div class="stat-item text-red">Only in B: <span id="countB">0</span></div>
+                <div class="stat-item text-red">Removed (only in A): <span id="countA">0</span></div>
+                <div class="stat-item text-green">Added (only in B): <span id="countB">0</span></div>
                 <div class="stat-item text-yellow">Changed: <span id="countChanged">0</span></div>
             </div>
             <div class="table-wrapper">
@@ -616,21 +652,12 @@
                 if (dataB.map.has(key)) {
                     // Exists in both: Check for changes
                     const rowB = dataB.map.get(key);
-                    const changes = [];
-                    
-                    // Compare columns (by index if aligned, or by name match logic?)
-                    // Simplified: We compare value by column index assuming schemas match. 
-                    // If schemas differ, this is a limitation.
                     
                     let isChanged = false;
                     const resultRow = { _status: 'MATCH', _source: 'Both', ...rowA };
 
                     // Compare values based on headers of A
                     headersA.forEach((h, colIdx) => {
-                         // Find corresponding column in B? 
-                         // For this version, we assume column order matches or we compare by Index 
-                         // To be robust, we really should compare by Header Name match.
-                         
                          const valA = rowA[colIdx];
                          
                          // Find index in B where header matches header A[colIdx]
@@ -652,24 +679,21 @@
                         countChanged++;
                         diffRows.push(resultRow);
                     } 
-                    // If exact match, we skip adding to table to keep it clean, 
-                    // or we can add an option to "Show Matches".
-                    // For DiffLens, let's show only diffs.
 
                     // Remove from B map so we know what's left
                     dataB.map.delete(key);
                 } else {
-                    // Only in A
+                    // Only in A → REMOVED (было в старом, нет в новом)
                     countA++;
-                    diffRows.push({ _status: 'ONLY IN A', _source: 'File A', ...rowA });
+                    diffRows.push({ _status: 'REMOVED (only in A)', _source: 'File A', ...rowA });
                 }
             });
 
-            // 2. Remaining in B
+            // 2. Remaining in B → ADDED (нет в старом, есть в новом)
             dataB.map.forEach((rowB, key) => {
                 countB++;
                 // We need to map B's data to A's structure roughly
-                const remappedRow = { _status: 'ONLY IN B', _source: 'File B' };
+                const remappedRow = { _status: 'ADDED (only in B)', _source: 'File B' };
                 
                 // Try to map B columns to A headers
                 headersA.forEach((h, i) => {
@@ -727,9 +751,9 @@
             rows.forEach(row => {
                 const tr = document.createElement('tr');
                 
-                // Styling Classes
-                if (row._status === 'ONLY IN A') tr.classList.add('diff-a');
-                else if (row._status === 'ONLY IN B') tr.classList.add('diff-b');
+                // Styling Classes (git-diff semantics)
+                if (row._status === 'REMOVED (only in A)') tr.classList.add('diff-a');
+                else if (row._status === 'ADDED (only in B)') tr.classList.add('diff-b');
                 else if (row._status === 'CHANGED') tr.classList.add('diff-changed');
 
                 // Status Cell
@@ -763,7 +787,6 @@
             if(state.diffResult.length === 0) return;
 
             // Convert output object to worksheet
-            // Flatten object for SheetJS
             const flatData = state.diffResult.map(r => {
                 const newRow = { Status: r._status, Source: r._source };
                 state.A.headers.forEach((h, i) => {
